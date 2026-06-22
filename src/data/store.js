@@ -232,3 +232,18 @@ export async function getUser(userId) {
 export async function grantPoints(userId, delta) {
   await updateDoc(userRef(userId), { balance: increment(Math.floor(delta)) });
 }
+
+// 전원에게 delta 포인트 일괄 가산. (운영자만, 시작 포인트 지급용)
+export async function grantAllPoints(delta) {
+  const { db } = getFirebase();
+  const d = Math.floor(delta);
+  const us = await getDocs(collection(db, 'users'));
+  let batch = writeBatch(db);
+  let n = 0;
+  for (const u of us.docs) {
+    batch.update(u.ref, { balance: increment(d) });
+    if (++n % 400 === 0) { await batch.commit(); batch = writeBatch(db); }
+  }
+  await batch.commit();
+  return us.size;
+}

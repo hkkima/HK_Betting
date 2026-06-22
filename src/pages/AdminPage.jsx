@@ -3,7 +3,7 @@ import { useApp } from '../state/AppContext.jsx';
 import {
   ensureBoard, createUser, grantPoints, upsertMarket, addMarketsBulk,
   setMarketStatus, setRoundStatus, resolveMarket, refreshBoardMirror,
-  wipeMarketsAndBets, wipeUsers, subscribeUsers,
+  wipeMarketsAndBets, wipeUsers, grantAllPoints, subscribeUsers,
 } from '../data/store.js';
 import { nameToUserId, hashPin } from '../auth/auth.js';
 
@@ -91,20 +91,34 @@ function CreateUser({ flash }) {
 function GrantPoints({ flash }) {
   const [name, setName] = useState('');
   const [delta, setDelta] = useState(100);
+  const [allDelta, setAllDelta] = useState(1000);
   async function go() {
     try {
       await grantPoints(nameToUserId(name), Number(delta));
       flash(`'${name}' 에 ${delta}P 지급/조정`);
     } catch (e) { flash('실패: ' + e.message); }
   }
+  async function goAll() {
+    if (!window.confirm(`등록된 전원에게 ${allDelta}P 를 지급합니다. 계속할까요?`)) return;
+    try {
+      const n = await grantAllPoints(Number(allDelta));
+      flash(`전원 지급 완료 — ${n}명에게 각 ${allDelta}P`);
+    } catch (e) { flash('실패: ' + e.message); }
+  }
   return (
     <div className="card">
-      <h3>포인트 수동 지급/조정</h3>
+      <h3>포인트 지급/조정</h3>
       <div className="row">
         <input placeholder="이름" value={name} onChange={(e) => setName(e.target.value)} />
         <input type="number" value={delta} onChange={(e) => setDelta(e.target.value)} style={{ width: 120 }} />
-        <button className="primary" onClick={go}>적용</button>
+        <button className="primary" onClick={go}>개인 지급</button>
       </div>
+      <div className="row" style={{ marginTop: 8 }}>
+        <span className="muted" style={{ width: 110 }}>전원에게 +</span>
+        <input type="number" value={allDelta} onChange={(e) => setAllDelta(e.target.value)} style={{ width: 120 }} />
+        <button className="primary" onClick={goAll}>전원 지급</button>
+      </div>
+      <p className="muted">전원 지급은 현재 잔액에 가산됩니다(시작 포인트 일괄 지급용).</p>
     </div>
   );
 }

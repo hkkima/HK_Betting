@@ -33,7 +33,13 @@ service cloud.firestore {
     // 베팅 참가자 계정 (이름 + PIN, balance 보유)
     match /users/{userId} {
       allow read: if true;                  // 명단/리더보드 공개
-      allow create, delete: if isAdmin();   // 계정/포인트는 운영진 발급
+      allow delete: if isAdmin();
+      // 자체 가입: 본인이 만들되 시작 balance 는 반드시 0(포인트는 운영자만 지급).
+      // 운영자는 임의 balance 로 생성 가능.
+      allow create: if isAdmin()
+        || (signedIn()
+            && request.resource.data.balance == 0
+            && request.resource.data.keys().hasOnly(['name', 'pinHash', 'balance']));
       // 운영자는 자유롭게(정산/지급). 참가자는 balance 만, 감소만, 음수 불가.
       allow update: if isAdmin()
         || (signedIn()

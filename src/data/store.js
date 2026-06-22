@@ -126,6 +126,27 @@ export async function upsertMarket(market) {
   await batch.commit();
 }
 
+// 여러 마켓을 한 번에 생성(대진 일괄 입력). board 읽기 1 + 커밋 1로 호출 최소화.
+export async function addMarketsBulk(markets) {
+  const { db } = getFirebase();
+  const board = (await getDoc(boardRef())).data() || { markets: [] };
+  const mirrors = [...(board.markets || [])];
+  const batch = writeBatch(db);
+  for (const m of markets) {
+    const pools = Object.fromEntries((m.options || []).map((o) => [o.id, { stake: 0, count: 0 }]));
+    const full = {
+      type: m.type || 'match', round: m.round || '', title: m.title || '',
+      options: m.options || [], status: m.status || 'draft', result: m.result ?? null, pools,
+    };
+    batch.set(marketRef(m.id), full, { merge: true });
+    const mirror = { id: m.id, title: full.title, round: full.round, type: full.type, status: full.status, result: full.result };
+    const idx = mirrors.findIndex((x) => x.id === m.id);
+    if (idx >= 0) mirrors[idx] = mirror; else mirrors.push(mirror);
+  }
+  batch.set(boardRef(), { markets: mirrors }, { merge: true });
+  await batch.commit();
+}
+
 // 마켓 상태 변경(draft→open→locked). board 미러 동기화.
 export async function setMarketStatus(marketId, status) {
   const { db } = getFirebase();

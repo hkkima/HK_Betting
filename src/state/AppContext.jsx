@@ -1,7 +1,7 @@
 import { createContext, useContext, useEffect, useState, useCallback } from 'react';
 import { isConfigured, ensureAnonAuth, signInWithGoogle, isAdminEmail } from '../data/firebase.js';
-import { subscribeBoard, getUser } from '../data/store.js';
-import { nameToUserId, verifyPin } from '../auth/auth.js';
+import { subscribeBoard, getUser, createUser } from '../data/store.js';
+import { nameToUserId, verifyPin, hashPin } from '../auth/auth.js';
 
 const Ctx = createContext(null);
 export const useApp = () => useContext(Ctx);
@@ -38,6 +38,19 @@ export function AppProvider({ children }) {
     persist({ role: 'participant', userId, name: user.name });
   }, [configured, persist]);
 
+  const registerParticipant = useCallback(async (name, pin) => {
+    if (!configured) throw new Error('Firebase 설정이 필요합니다 (.env).');
+    if (!name?.trim() || !pin?.trim()) throw new Error('이름과 PIN을 입력하세요.');
+    if (!/^\d{4,}$/.test(String(pin).trim())) throw new Error('PIN은 숫자 4자리 이상이어야 합니다.');
+    const userId = nameToUserId(name);
+    await ensureAnonAuth();
+    const existing = await getUser(userId);
+    if (existing) throw new Error('이미 사용 중인 이름입니다. 다른 이름을 쓰거나 로그인하세요.');
+    // 시작 balance 는 0 (포인트는 운영자가 지급). 규칙도 이를 강제.
+    await createUser({ userId, name: name.trim(), pinHash: hashPin(pin), balance: 0 });
+    persist({ role: 'participant', userId, name: name.trim() });
+  }, [configured, persist]);
+
   const loginAdmin = useCallback(async () => {
     if (!configured) throw new Error('Firebase 설정이 필요합니다 (.env).');
     const u = await signInWithGoogle();
@@ -48,7 +61,7 @@ export function AppProvider({ children }) {
   const logout = useCallback(() => persist({ role: 'guest' }), [persist]);
 
   return (
-    <Ctx.Provider value={{ configured, board, session, loginParticipant, loginAdmin, logout }}>
+    <Ctx.Provider value={{ configured, board, session, loginParticipant, registerParticipant, loginAdmin, logout }}>
       {children}
     </Ctx.Provider>
   );

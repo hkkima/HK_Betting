@@ -2,9 +2,11 @@ import { useState } from 'react';
 import { useApp } from '../state/AppContext.jsx';
 
 export default function LoginPage() {
-  const { session, loginParticipant, loginAdmin, logout } = useApp();
+  const { session, loginParticipant, registerParticipant, loginAdmin, logout } = useApp();
+  const [mode, setMode] = useState('login'); // 'login' | 'register'
   const [name, setName] = useState('');
   const [pin, setPin] = useState('');
+  const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
 
   if (session.role !== 'guest') {
@@ -18,9 +20,12 @@ export default function LoginPage() {
 
   async function doParticipant(e) {
     e.preventDefault();
-    setErr('');
-    try { await loginParticipant(name, pin); }
-    catch (e2) { setErr(e2.message); }
+    setErr(''); setBusy(true);
+    try {
+      if (mode === 'login') await loginParticipant(name, pin);
+      else await registerParticipant(name, pin);
+    } catch (e2) { setErr(e2.message); }
+    finally { setBusy(false); }
   }
   async function doAdmin() {
     setErr('');
@@ -31,13 +36,26 @@ export default function LoginPage() {
   return (
     <div>
       <div className="card">
-        <h3>참가자 로그인</h3>
+        <div className="row" style={{ marginBottom: 10 }}>
+          <h3 style={{ margin: 0 }}>참가자</h3>
+          <div className="spacer" />
+          <nav className="tabs">
+            <button className={mode === 'login' ? 'active' : ''} onClick={() => { setMode('login'); setErr(''); }}>로그인</button>
+            <button className={mode === 'register' ? 'active' : ''} onClick={() => { setMode('register'); setErr(''); }}>가입</button>
+          </nav>
+        </div>
         <form className="row" onSubmit={doParticipant}>
           <input placeholder="이름" value={name} onChange={(e) => setName(e.target.value)} />
-          <input placeholder="PIN" type="password" value={pin} onChange={(e) => setPin(e.target.value)} />
-          <button className="primary" type="submit">로그인</button>
+          <input placeholder="PIN (숫자 4자리+)" type="password" value={pin} onChange={(e) => setPin(e.target.value)} />
+          <button className="primary" type="submit" disabled={busy}>
+            {mode === 'login' ? '로그인' : '가입하기'}
+          </button>
         </form>
-        <p className="muted">계정/포인트는 운영진이 발급합니다.</p>
+        <p className="muted">
+          {mode === 'login'
+            ? '처음이면 [가입] 탭에서 계정을 만드세요.'
+            : '이름·PIN으로 직접 가입할 수 있어요. 시작 포인트는 운영진이 지급합니다.'}
+        </p>
       </div>
       <div className="card">
         <h3>운영자 로그인</h3>

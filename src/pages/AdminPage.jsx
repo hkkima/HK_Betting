@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useApp } from '../state/AppContext.jsx';
 import {
-  ensureBoard, createUser, grantPoints, upsertMarket,
+  ensureBoard, createUser, grantPoints, upsertMarket, addMarketsBulk,
   setMarketStatus, setRoundStatus, resolveMarket, subscribeUsers,
 } from '../data/store.js';
 import { nameToUserId, hashPin } from '../auth/auth.js';
@@ -18,9 +18,10 @@ export default function AdminPage() {
   return (
     <div>
       {msg && <div className="banner">{msg}</div>}
-      <CreateUser flash={flash} />
       <GrantPoints flash={flash} />
+      <BulkBracket flash={flash} />
       <CreateMarket flash={flash} />
+      <CreateUser flash={flash} />
       {rounds.length > 0 && (
         <div className="card">
           <h3>라운드 일괄 제어</h3>
@@ -50,7 +51,7 @@ function CreateUser({ flash }) {
   }
   return (
     <div className="card">
-      <h3>참가자 발급</h3>
+      <h3>참가자 직접 발급 (선택 — 보통은 참가자가 직접 가입)</h3>
       <div className="row">
         <input placeholder="이름" value={name} onChange={(e) => setName(e.target.value)} />
         <input placeholder="PIN" value={pin} onChange={(e) => setPin(e.target.value)} />
@@ -77,6 +78,57 @@ function GrantPoints({ flash }) {
         <input placeholder="이름" value={name} onChange={(e) => setName(e.target.value)} />
         <input type="number" value={delta} onChange={(e) => setDelta(e.target.value)} style={{ width: 120 }} />
         <button className="primary" onClick={go}>적용</button>
+      </div>
+    </div>
+  );
+}
+
+function BulkBracket({ flash }) {
+  const [round, setRound] = useState('16강');
+  const [text, setText] = useState('navi vs cat\n...');
+  const [preview, setPreview] = useState([]);
+
+  function parse(raw) {
+    return raw.split('\n').map((l) => l.trim()).filter(Boolean)
+      .map((line) => line.split(/\s+vs\s+|\s*,\s*|\s+VS\s+/).map((s) => s.trim()))
+      .filter((pair) => pair.length === 2 && pair[0] && pair[1]);
+  }
+
+  function onText(v) {
+    setText(v);
+    setPreview(parse(v));
+  }
+
+  async function go() {
+    const pairs = parse(text);
+    if (pairs.length === 0) return flash('파싱된 경기가 없습니다. 한 줄에 "선수A vs 선수B" 형식으로.');
+    const markets = pairs.map(([a, b], i) => ({
+      id: `${round}-${i + 1}-${nameToUserId(a)}-vs-${nameToUserId(b)}`.slice(0, 90),
+      type: 'match', round, title: `${round} ${i + 1}경기`,
+      options: [{ id: 'A', label: a }, { id: 'B', label: b }], status: 'draft',
+    }));
+    await addMarketsBulk(markets);
+    flash(`${markets.length}개 마켓 일괄 생성 (${round})`);
+    setText(''); setPreview([]);
+  }
+
+  return (
+    <div className="card">
+      <h3>대진 일괄 입력</h3>
+      <div className="row">
+        <input placeholder="라운드(예: 16강)" value={round} onChange={(e) => setRound(e.target.value)} style={{ width: 140 }} />
+        <span className="muted">한 줄에 한 경기: <code>선수A vs 선수B</code> (또는 쉼표)</span>
+      </div>
+      <textarea
+        rows={8}
+        value={text}
+        onChange={(e) => onText(e.target.value)}
+        style={{ width: '100%', marginTop: 8, background: 'var(--panel2)', color: 'var(--ink)', border: '1px solid var(--line)', borderRadius: 8, padding: 10, fontSize: 14, fontFamily: 'inherit' }}
+        placeholder={'navi vs cat\nfoo vs bar\n...'}
+      />
+      <div className="row" style={{ marginTop: 8 }}>
+        <button className="primary" onClick={go}>{preview.length || 0}경기 생성</button>
+        {preview.length > 0 && <span className="muted">미리보기: {preview.map((p) => `${p[0]}-${p[1]}`).join(', ')}</span>}
       </div>
     </div>
   );

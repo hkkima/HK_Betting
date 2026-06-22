@@ -190,6 +190,35 @@ export async function refreshBoardMirror() {
   return mirrors.length;
 }
 
+// 위험: 모든 마켓 + 베팅 삭제, board.markets 비움. (대회 리셋용, 운영자만)
+export async function wipeMarketsAndBets() {
+  const { db } = getFirebase();
+  const ms = await getDocs(collection(db, 'markets'));
+  for (const md of ms.docs) {
+    const bets = await getDocs(collection(db, 'markets', md.id, 'bets'));
+    const batch = writeBatch(db);
+    bets.docs.forEach((b) => batch.delete(b.ref));
+    batch.delete(md.ref);
+    await batch.commit();
+  }
+  await setDoc(boardRef(), { markets: [] }, { merge: true });
+  return ms.size;
+}
+
+// 위험: 모든 참가자 삭제. (운영자만)
+export async function wipeUsers() {
+  const { db } = getFirebase();
+  const us = await getDocs(collection(db, 'users'));
+  let batch = writeBatch(db);
+  let n = 0;
+  for (const u of us.docs) {
+    batch.delete(u.ref);
+    if (++n % 400 === 0) { await batch.commit(); batch = writeBatch(db); }
+  }
+  await batch.commit();
+  return us.size;
+}
+
 export async function createUser({ userId, name, pinHash, balance = 0 }) {
   await setDoc(userRef(userId), { name, pinHash, balance: Math.floor(balance) });
 }

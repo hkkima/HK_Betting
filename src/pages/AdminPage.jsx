@@ -2,7 +2,8 @@ import { useEffect, useState } from 'react';
 import { useApp } from '../state/AppContext.jsx';
 import {
   ensureBoard, createUser, grantPoints, upsertMarket, addMarketsBulk,
-  setMarketStatus, setRoundStatus, resolveMarket, refreshBoardMirror, subscribeUsers,
+  setMarketStatus, setRoundStatus, resolveMarket, refreshBoardMirror,
+  wipeMarketsAndBets, wipeUsers, subscribeUsers,
 } from '../data/store.js';
 import { nameToUserId, hashPin } from '../auth/auth.js';
 
@@ -35,6 +36,31 @@ export default function AdminPage() {
         </div>
       )}
       <MarketList markets={markets} flash={flash} />
+      <DangerZone flash={flash} />
+    </div>
+  );
+}
+
+function DangerZone({ flash }) {
+  async function wipeMatches() {
+    if (!window.confirm('모든 대진/마켓/베팅을 삭제합니다. 참가자·잔액은 유지됩니다. 계속할까요?')) return;
+    const n = await wipeMarketsAndBets();
+    flash(`마켓 ${n}개 + 베팅 삭제, 대진 초기화 완료`);
+  }
+  async function wipeAll() {
+    if (!window.confirm('⚠️ 참가자까지 포함해 전체 데이터를 삭제합니다. 되돌릴 수 없습니다. 계속할까요?')) return;
+    const m = await wipeMarketsAndBets();
+    const u = await wipeUsers();
+    flash(`전체 초기화 완료 (마켓 ${m} · 참가자 ${u} 삭제)`);
+  }
+  return (
+    <div className="card" style={{ borderColor: 'var(--lose)' }}>
+      <h3 style={{ color: 'var(--lose)' }}>⚠️ 위험 구역 — 데이터 초기화</h3>
+      <div className="row">
+        <button className="ghost" onClick={wipeMatches}>대진·베팅만 초기화</button>
+        <button className="ghost" onClick={wipeAll}>전체 초기화 (참가자 포함)</button>
+      </div>
+      <p className="muted">대회 리셋용. 삭제는 운영자만 가능(보안 규칙). 되돌릴 수 없습니다.</p>
     </div>
   );
 }

@@ -34,9 +34,9 @@ nav.tabs button.active { background: var(--accent); color: #1a1200; border-color
 .round-title { font-size: 13px; color: var(--muted); margin: 18px 0 8px; letter-spacing: .03em; }
 .market { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; margin-bottom: 10px; }
 .market h3 { margin: 0 0 8px; font-size: 15px; }
-.opts { display: flex; gap: 8px; }
+.opts { display: flex; gap: 8px; flex-wrap: wrap; }
 .opt {
-  flex: 1; text-align: center; border: 1px solid var(--line); border-radius: 10px;
+  flex: 1 1 120px; min-width: 110px; text-align: center; border: 1px solid var(--line); border-radius: 10px;
   padding: 10px; cursor: pointer; background: var(--panel2);
 }
 .opt.sel { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent) inset; }

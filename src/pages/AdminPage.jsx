@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useApp } from '../state/AppContext.jsx';
 import {
   ensureBoard, createUser, grantPoints, upsertMarket, addMarketsBulk,
-  setMarketStatus, setRoundStatus, resolveMarket, subscribeUsers,
+  setMarketStatus, setRoundStatus, resolveMarket, refreshBoardMirror, subscribeUsers,
 } from '../data/store.js';
 import { nameToUserId, hashPin } from '../auth/auth.js';
 
@@ -134,36 +134,47 @@ function BulkBracket({ flash }) {
   );
 }
 
+// 1:1 ~ N지선다 공용 마켓 추가 (다자 대전 = 우승자 맞히기 등)
 function CreateMarket({ flash }) {
   const [round, setRound] = useState('16강');
   const [title, setTitle] = useState('');
-  const [a, setA] = useState('');
-  const [b, setB] = useState('');
-  async function go() {
-    if (!title || !a || !b) return flash('제목과 양쪽 선수를 입력하세요.');
-    const id = `${round}-${nameToUserId(a)}-vs-${nameToUserId(b)}`.slice(0, 90);
-    await upsertMarket({
-      id, type: 'match', round, title,
-      options: [{ id: 'A', label: a }, { id: 'B', label: b }],
-      status: 'draft',
-    });
-    flash(`마켓 생성: ${title}`);
-    setTitle(''); setA(''); setB('');
+  const [players, setPlayers] = useState('');
+  function labels() {
+    return players.split(/\n|,/).map((s) => s.trim()).filter(Boolean);
   }
+  async function go() {
+    const ls = labels();
+    if (!title || ls.length < 2) return flash('제목과 선수/선택지 2개 이상을 입력하세요.');
+    // 2지선다는 A/B, 그 이상은 o1..oN 으로 옵션 id 부여.
+    const options = ls.map((label, i) => ({
+      id: ls.length === 2 ? (i === 0 ? 'A' : 'B') : `o${i + 1}`,
+      label,
+    }));
+    const id = `${round || '기타'}-${nameToUserId(title)}-${Date.now().toString(36)}`.slice(0, 90);
+    await upsertMarket({ id, type: ls.length === 2 ? 'match' : 'multi', round, title, options, status: 'draft' });
+    flash(`마켓 생성: ${title} (${ls.length}지선다)`);
+    setTitle(''); setPlayers('');
+  }
+  const preview = labels();
   return (
     <div className="card">
-      <h3>매치 마켓 추가</h3>
+      <h3>마켓 추가 (1:1 · 다자 공용)</h3>
       <div className="row">
-        <input placeholder="라운드(예: 16강)" value={round} onChange={(e) => setRound(e.target.value)} style={{ width: 120 }} />
-        <input placeholder="제목(예: A조 1경기)" value={title} onChange={(e) => setTitle(e.target.value)} />
+        <input placeholder="라운드(예: 16강, 우승예측)" value={round} onChange={(e) => setRound(e.target.value)} style={{ width: 150 }} />
+        <input placeholder="제목(예: A조 1경기 / 최종 우승자)" value={title} onChange={(e) => setTitle(e.target.value)} />
       </div>
+      <textarea
+        rows={4}
+        value={players}
+        onChange={(e) => setPlayers(e.target.value)}
+        placeholder={'선수/선택지를 줄바꿈 또는 쉼표로 구분\n예) 김규장, 김채연  (1:1)\n또는 4명 이상 = 다자 대전'}
+        style={{ width: '100%', marginTop: 8, background: 'var(--panel2)', color: 'var(--ink)', border: '1px solid var(--line)', borderRadius: 8, padding: 10, fontSize: 14, fontFamily: 'inherit' }}
+      />
       <div className="row" style={{ marginTop: 8 }}>
-        <input placeholder="선수 A" value={a} onChange={(e) => setA(e.target.value)} />
-        <span>vs</span>
-        <input placeholder="선수 B" value={b} onChange={(e) => setB(e.target.value)} />
-        <button className="primary" onClick={go}>추가</button>
+        <button className="primary" onClick={go}>추가 ({preview.length}지선다)</button>
+        {preview.length >= 2 && <span className="muted">{preview.join(' · ')}</span>}
       </div>
-      <p className="muted">승점·우승 예측 등 다른 베팅도 같은 구조(type만 다름)로 확장됩니다.</p>
+      <p className="muted">2명이면 1:1 매치, 3명 이상이면 다자 대전(우승자 맞히기). 정산은 동일한 패리뮤추얼.</p>
     </div>
   );
 }
@@ -172,9 +183,12 @@ function MarketList({ markets, flash }) {
   if (markets.length === 0) return null;
   return (
     <div className="card">
-      <h3>마켓 목록 / 정산</h3>
+      <div className="row" style={{ justifyContent: 'space-between' }}>
+        <h3 style={{ margin: 0 }}>마켓 목록 / 정산</h3>
+        <button className="ghost" onClick={() => refreshBoardMirror().then((n) => flash(`마켓 정보 갱신 (${n}개)`))}>대진 정보 갱신</button>
+      </div>
       <table className="board">
-        <thead><tr><th>라운드</th><th>제목</th><th>상태</th><th>제어</th></tr></thead>
+        <thead><tr><th>라운드</th><th>대진 (제목)</th><th>상태</th><th>승자 확정 / 제어</th></tr></thead>
         <tbody>
           {markets.map((m) => <MarketRow key={m.id} m={m} flash={flash} />)}
         </tbody>
@@ -184,29 +198,32 @@ function MarketList({ markets, flash }) {
 }
 
 function MarketRow({ m, flash }) {
-  // 결과 선택은 A/B 고정(매치). 승자 id 로 정산.
+  const options = m.options || [];
+  const labelOf = (id) => options.find((o) => o.id === id)?.label || id;
+  // 승자 id 로 정산. 옵션 개수 무관(1:1·다자 공용).
   async function resolve(option) {
     const r = await resolveMarket({ marketId: m.id, winningOption: option });
     flash(r.voided
       ? `${m.title}: 무효(이긴 쪽 베팅 없음) — 원금 환불`
-      : `${m.title}: 정산 완료 (총풀 ${r.totalPool}P, 승자 ${Object.keys(r.payouts).length}명)`);
+      : `${labelOf(option)} 승 확정 — ${m.title}: 정산 완료 (총풀 ${r.totalPool}P, 승자 ${Object.keys(r.payouts).length}명)`);
   }
+  const canResolve = m.status === 'locked' || m.status === 'open';
   return (
     <tr>
       <td>{m.round}</td>
-      <td>{m.title}</td>
+      <td>
+        <div><b>{options.map((o) => o.label).join('  vs  ')}</b></div>
+        <div className="muted">{m.title}</div>
+      </td>
       <td><span className={`pill ${m.status}`}>{m.status}</span></td>
       <td>
         <div className="row">
           {m.status === 'draft' && <button className="ghost" onClick={() => setMarketStatus(m.id, 'open').then(() => flash('오픈'))}>오픈</button>}
           {m.status === 'open' && <button className="ghost" onClick={() => setMarketStatus(m.id, 'locked').then(() => flash('마감'))}>마감</button>}
-          {(m.status === 'locked' || m.status === 'open') && (
-            <>
-              <button className="ghost" onClick={() => resolve('A')}>A승</button>
-              <button className="ghost" onClick={() => resolve('B')}>B승</button>
-            </>
-          )}
-          {m.status === 'resolved' && <span className="muted">결과: {m.result ?? '무효'}</span>}
+          {canResolve && options.map((o) => (
+            <button key={o.id} className="ghost" onClick={() => resolve(o.id)}>{o.label} 승</button>
+          ))}
+          {m.status === 'resolved' && <span className="ok">✔ 승자: {m.result == null ? '무효' : labelOf(m.result)}</span>}
         </div>
       </td>
     </tr>

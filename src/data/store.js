@@ -115,7 +115,7 @@ export async function upsertMarket(market) {
   };
   const board = (await getDoc(boardRef())).data() || { markets: [] };
   const exists = (board.markets || []).some((m) => m.id === market.id);
-  const mirror = { id: market.id, title: full.title, round: full.round, type: full.type, status: full.status, result: full.result };
+  const mirror = { id: market.id, title: full.title, round: full.round, type: full.type, status: full.status, result: full.result, options: full.options };
   const markets = exists
     ? board.markets.map((m) => (m.id === market.id ? mirror : m))
     : [...(board.markets || []), mirror];
@@ -139,7 +139,7 @@ export async function addMarketsBulk(markets) {
       options: m.options || [], status: m.status || 'draft', result: m.result ?? null, pools,
     };
     batch.set(marketRef(m.id), full, { merge: true });
-    const mirror = { id: m.id, title: full.title, round: full.round, type: full.type, status: full.status, result: full.result };
+    const mirror = { id: m.id, title: full.title, round: full.round, type: full.type, status: full.status, result: full.result, options: full.options };
     const idx = mirrors.findIndex((x) => x.id === m.id);
     if (idx >= 0) mirrors[idx] = mirror; else mirrors.push(mirror);
   }
@@ -170,6 +170,24 @@ export async function setRoundStatus(round, status) {
   snap.docs.forEach((d) => batch.update(d.ref, { status }));
   batch.set(boardRef(), { markets }, { merge: true });
   await batch.commit();
+}
+
+// board.markets 미러를 실제 markets 문서 기준으로 재생성(옵션/상태 동기화). 드리프트 복구용.
+export async function refreshBoardMirror() {
+  const { db } = getFirebase();
+  const snap = await getDocs(collection(db, 'markets'));
+  const board = (await getDoc(boardRef())).data() || { markets: [] };
+  const order = (board.markets || []).map((m) => m.id);
+  const mirrors = snap.docs.map((d) => {
+    const m = d.data();
+    return { id: d.id, title: m.title, round: m.round, type: m.type, status: m.status, result: m.result ?? null, options: m.options || [] };
+  });
+  mirrors.sort((a, b) => {
+    const ia = order.indexOf(a.id), ib = order.indexOf(b.id);
+    return (ia < 0 ? 1e9 : ia) - (ib < 0 ? 1e9 : ib);
+  });
+  await setDoc(boardRef(), { markets: mirrors }, { merge: true });
+  return mirrors.length;
 }
 
 export async function createUser({ userId, name, pinHash, balance = 0 }) {

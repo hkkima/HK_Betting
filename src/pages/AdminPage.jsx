@@ -2,8 +2,9 @@ import { useEffect, useState } from 'react';
 import { useApp } from '../state/AppContext.jsx';
 import {
   ensureBoard, createUser, grantPoints, upsertMarket, addMarketsBulk,
-  setMarketStatus, setRoundStatus, resolveMarket, refreshBoardMirror,
+  setMarketStatus, setRoundStatus, resolveMarket, refreshBoardMirror, setMarketBlind,
   wipeMarketsAndBets, wipeUsers, grantAllPoints, subscribeUsers,
+  getUserByName, updateUserProfile, transferPoints,
 } from '../data/store.js';
 import { nameToUserId, hashPin } from '../auth/auth.js';
 
@@ -20,6 +21,8 @@ export default function AdminPage() {
     <div>
       {msg && <div className="banner">{msg}</div>}
       <GrantPoints flash={flash} />
+      <TransferPoints flash={flash} />
+      <EditAccount flash={flash} />
       <BulkBracket flash={flash} />
       <CreateMarket flash={flash} />
       <CreateUser flash={flash} />
@@ -94,8 +97,10 @@ function GrantPoints({ flash }) {
   const [allDelta, setAllDelta] = useState(1000);
   async function go() {
     try {
-      await grantPoints(nameToUserId(name), Number(delta));
-      flash(`'${name}' 에 ${delta}P 지급/조정`);
+      const u = await getUserByName(name);
+      if (!u) return flash(`'${name}' 계정을 찾을 수 없습니다.`);
+      await grantPoints(u.id, Number(delta));
+      flash(`'${u.name}' 에 ${delta}P 지급/조정`);
     } catch (e) { flash('실패: ' + e.message); }
   }
   async function goAll() {
@@ -123,10 +128,71 @@ function GrantPoints({ flash }) {
   );
 }
 
+function TransferPoints({ flash }) {
+  const [from, setFrom] = useState('');
+  const [to, setTo] = useState('');
+  const [amt, setAmt] = useState(100);
+  async function go() {
+    try {
+      const f = await getUserByName(from);
+      const t = await getUserByName(to);
+      if (!f) return flash(`보내는 계정 '${from}' 없음`);
+      if (!t) return flash(`받는 계정 '${to}' 없음`);
+      await transferPoints(f.id, t.id, Number(amt));
+      flash(`전송 완료 — ${f.name} → ${t.name} ${amt}P`);
+      setAmt(100);
+    } catch (e) { flash('실패: ' + e.message); }
+  }
+  return (
+    <div className="card">
+      <h3>계정 간 포인트 전송 (운영자 중개)</h3>
+      <div className="row">
+        <input placeholder="보내는 이름" value={from} onChange={(e) => setFrom(e.target.value)} />
+        <span>→</span>
+        <input placeholder="받는 이름" value={to} onChange={(e) => setTo(e.target.value)} />
+        <input type="number" value={amt} onChange={(e) => setAmt(e.target.value)} style={{ width: 110 }} />
+        <button className="primary" onClick={go}>보내기</button>
+      </div>
+    </div>
+  );
+}
+
+function EditAccount({ flash }) {
+  const [cur, setCur] = useState('');
+  const [newName, setNewName] = useState('');
+  const [newPin, setNewPin] = useState('');
+  async function go() {
+    try {
+      const u = await getUserByName(cur);
+      if (!u) return flash(`'${cur}' 계정을 찾을 수 없습니다.`);
+      const patch = {};
+      if (newName.trim()) patch.name = newName.trim();
+      if (newPin.trim()) patch.pinHash = hashPin(newPin.trim());
+      if (Object.keys(patch).length === 0) return flash('변경할 이름 또는 PIN을 입력하세요.');
+      await updateUserProfile(u.id, patch);
+      flash(`'${u.name}' 수정 완료${patch.name ? ` → 이름 '${patch.name}'` : ''}${patch.pinHash ? ', PIN 변경' : ''}`);
+      setCur(''); setNewName(''); setNewPin('');
+    } catch (e) { flash('실패: ' + e.message); }
+  }
+  return (
+    <div className="card">
+      <h3>계정 수정 (이름 · PIN)</h3>
+      <div className="row">
+        <input placeholder="현재 이름" value={cur} onChange={(e) => setCur(e.target.value)} />
+        <input placeholder="새 이름(선택)" value={newName} onChange={(e) => setNewName(e.target.value)} />
+        <input placeholder="새 PIN(선택)" value={newPin} onChange={(e) => setNewPin(e.target.value)} style={{ width: 120 }} />
+        <button className="primary" onClick={go}>수정</button>
+      </div>
+      <p className="muted">로그인은 이름(표시명) 기준이라 이름을 바꾸면 새 이름으로 로그인합니다. 베팅 기록은 유지됩니다.</p>
+    </div>
+  );
+}
+
 function BulkBracket({ flash }) {
   const [round, setRound] = useState('16강');
   const [text, setText] = useState('navi vs cat\n...');
   const [preview, setPreview] = useState([]);
+  const [blind, setBlind] = useState(false);
 
   function parse(raw) {
     return raw.split('\n').map((l) => l.trim()).filter(Boolean)
@@ -145,7 +211,7 @@ function BulkBracket({ flash }) {
     const markets = pairs.map(([a, b], i) => ({
       id: `${round}-${i + 1}-${nameToUserId(a)}-vs-${nameToUserId(b)}`.slice(0, 90),
       type: 'match', round, title: `${round} ${i + 1}경기`,
-      options: [{ id: 'A', label: a }, { id: 'B', label: b }], status: 'draft',
+      options: [{ id: 'A', label: a }, { id: 'B', label: b }], status: 'draft', blind,
     }));
     await addMarketsBulk(markets);
     flash(`${markets.length}개 마켓 일괄 생성 (${round})`);
@@ -168,6 +234,7 @@ function BulkBracket({ flash }) {
       />
       <div className="row" style={{ marginTop: 8 }}>
         <button className="primary" onClick={go}>{preview.length || 0}경기 생성</button>
+        <label className="row" style={{ gap: 4 }}><input type="checkbox" checked={blind} onChange={(e) => setBlind(e.target.checked)} /> 🙈 블라인드</label>
         {preview.length > 0 && <span className="muted">미리보기: {preview.map((p) => `${p[0]}-${p[1]}`).join(', ')}</span>}
       </div>
     </div>
@@ -179,6 +246,7 @@ function CreateMarket({ flash }) {
   const [round, setRound] = useState('16강');
   const [title, setTitle] = useState('');
   const [players, setPlayers] = useState('');
+  const [blind, setBlind] = useState(false);
   function labels() {
     return players.split(/\n|,/).map((s) => s.trim()).filter(Boolean);
   }
@@ -191,8 +259,8 @@ function CreateMarket({ flash }) {
       label,
     }));
     const id = `${round || '기타'}-${nameToUserId(title)}-${Date.now().toString(36)}`.slice(0, 90);
-    await upsertMarket({ id, type: ls.length === 2 ? 'match' : 'multi', round, title, options, status: 'draft' });
-    flash(`마켓 생성: ${title} (${ls.length}지선다)`);
+    await upsertMarket({ id, type: ls.length === 2 ? 'match' : 'multi', round, title, options, status: 'draft', blind });
+    flash(`마켓 생성: ${title} (${ls.length}지선다${blind ? ', 블라인드' : ''})`);
     setTitle(''); setPlayers('');
   }
   const preview = labels();
@@ -212,6 +280,7 @@ function CreateMarket({ flash }) {
       />
       <div className="row" style={{ marginTop: 8 }}>
         <button className="primary" onClick={go}>추가 ({preview.length}지선다)</button>
+        <label className="row" style={{ gap: 4 }}><input type="checkbox" checked={blind} onChange={(e) => setBlind(e.target.checked)} /> 🙈 블라인드</label>
         {preview.length >= 2 && <span className="muted">{preview.join(' · ')}</span>}
       </div>
       <p className="muted">2명이면 1:1 매치, 3명 이상이면 다자 대전(우승자 맞히기). 정산은 동일한 패리뮤추얼.</p>
@@ -252,7 +321,7 @@ function MarketRow({ m, flash }) {
     <tr>
       <td>{m.round}</td>
       <td>
-        <div><b>{options.map((o) => o.label).join('  vs  ')}</b></div>
+        <div><b>{options.map((o) => o.label).join('  vs  ')}</b>{m.blind && <span className="pill" style={{ marginLeft: 6 }}>🙈</span>}</div>
         <div className="muted">{m.title}</div>
       </td>
       <td><span className={`pill ${m.status}`}>{m.status}</span></td>
@@ -260,6 +329,11 @@ function MarketRow({ m, flash }) {
         <div className="row">
           {m.status === 'draft' && <button className="ghost" onClick={() => setMarketStatus(m.id, 'open').then(() => flash('오픈'))}>오픈</button>}
           {m.status === 'open' && <button className="ghost" onClick={() => setMarketStatus(m.id, 'locked').then(() => flash('마감'))}>마감</button>}
+          {m.status !== 'resolved' && (
+            <button className="ghost" onClick={() => setMarketBlind(m.id, !m.blind).then(() => flash(m.blind ? '블라인드 해제' : '블라인드 설정'))}>
+              {m.blind ? '🙈 해제' : '🙈 블라인드'}
+            </button>
+          )}
           {canResolve && options.map((o) => (
             <button key={o.id} className="ghost" onClick={() => resolve(o.id)}>{o.label} 승</button>
           ))}

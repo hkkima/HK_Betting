@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useState, useCallback } from 'react';
 import { isConfigured, ensureAnonAuth, signInWithGoogle, isAdminEmail } from '../data/firebase.js';
-import { subscribeBoard, getUser, createUser } from '../data/store.js';
+import { subscribeBoard, getUser, getUserByName, createUser } from '../data/store.js';
 import { nameToUserId, verifyPin, hashPin } from '../auth/auth.js';
 
 const Ctx = createContext(null);
@@ -30,12 +30,12 @@ export function AppProvider({ children }) {
 
   const loginParticipant = useCallback(async (name, pin) => {
     if (!configured) throw new Error('Firebase 설정이 필요합니다 (.env).');
-    const userId = nameToUserId(name);
-    const user = await getUser(userId);
-    if (!user) throw new Error('등록되지 않은 참가자입니다. 운영진에게 계정 발급을 요청하세요.');
+    // 이름(표시명)으로 조회 → 이름 변경 후에도 로그인 가능. 신규/구 계정 모두 커버.
+    const user = (await getUserByName(name)) || (await getUser(nameToUserId(name)));
+    if (!user) throw new Error('등록되지 않은 참가자입니다. [가입] 탭에서 계정을 만드세요.');
     if (!verifyPin(pin, user.pinHash)) throw new Error('PIN이 일치하지 않습니다.');
     await ensureAnonAuth();
-    persist({ role: 'participant', userId, name: user.name });
+    persist({ role: 'participant', userId: user.id, name: user.name });
   }, [configured, persist]);
 
   const registerParticipant = useCallback(async (name, pin) => {

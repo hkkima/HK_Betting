@@ -56,6 +56,8 @@ function MarketCard({ marketId, session }) {
   if (!market) return null;
   const odds = liveOdds(market.pools || {});
   const canBet = session.role === 'participant' && market.status === 'open' && !myBet;
+  // 블라인드: 베팅이 열려있는 동안은 배율/베팅 수 숨김(마감/종료 후 공개).
+  const hidden = market.blind && market.status === 'open';
 
   async function submit() {
     setErr('');
@@ -71,7 +73,7 @@ function MarketCard({ marketId, session }) {
   return (
     <div className="market">
       <div className="row" style={{ justifyContent: 'space-between' }}>
-        <h3>{market.title}</h3>
+        <h3>{market.title}{market.blind && <span className="pill" style={{ marginLeft: 8 }}>🙈 블라인드</span>}</h3>
         <span className={`pill ${market.status}`}>{statusLabel(market.status)}</span>
       </div>
       <div className="opts">
@@ -84,8 +86,8 @@ function MarketCard({ marketId, session }) {
           return (
             <div key={o.id} className={classes.join(' ')} onClick={() => canBet && setSel(o.id)}>
               <div className="label">{o.label}</div>
-              <div className="odds">{odds[o.id] != null ? `×${odds[o.id]}` : '—'}</div>
-              <div className="pool">{pool.stake.toLocaleString()}P · {pool.count}명</div>
+              <div className="odds">{hidden ? '🙈' : (odds[o.id] != null ? `×${odds[o.id]}` : '—')}</div>
+              <div className="pool">{hidden ? '마감 후 공개' : `${pool.stake.toLocaleString()}P · ${pool.count}명`}</div>
               {myBet?.option === o.id && <div className="pool">⭐ 내 베팅 {myBet.stake}P</div>}
             </div>
           );

@@ -111,11 +111,12 @@ export async function upsertMarket(market) {
     options: market.options || [],
     status: market.status || 'draft',
     result: market.result ?? null,
+    blind: market.blind ?? false,
     pools: market.pools || pools,
   };
   const board = (await getDoc(boardRef())).data() || { markets: [] };
   const exists = (board.markets || []).some((m) => m.id === market.id);
-  const mirror = { id: market.id, title: full.title, round: full.round, type: full.type, status: full.status, result: full.result, options: full.options };
+  const mirror = { id: market.id, title: full.title, round: full.round, type: full.type, status: full.status, result: full.result, options: full.options, blind: full.blind };
   const markets = exists
     ? board.markets.map((m) => (m.id === market.id ? mirror : m))
     : [...(board.markets || []), mirror];
@@ -136,10 +137,11 @@ export async function addMarketsBulk(markets) {
     const pools = Object.fromEntries((m.options || []).map((o) => [o.id, { stake: 0, count: 0 }]));
     const full = {
       type: m.type || 'match', round: m.round || '', title: m.title || '',
-      options: m.options || [], status: m.status || 'draft', result: m.result ?? null, pools,
+      options: m.options || [], status: m.status || 'draft', result: m.result ?? null,
+      blind: m.blind ?? false, pools,
     };
     batch.set(marketRef(m.id), full, { merge: true });
-    const mirror = { id: m.id, title: full.title, round: full.round, type: full.type, status: full.status, result: full.result, options: full.options };
+    const mirror = { id: m.id, title: full.title, round: full.round, type: full.type, status: full.status, result: full.result, options: full.options, blind: full.blind };
     const idx = mirrors.findIndex((x) => x.id === m.id);
     if (idx >= 0) mirrors[idx] = mirror; else mirrors.push(mirror);
   }
@@ -154,6 +156,17 @@ export async function setMarketStatus(marketId, status) {
   const markets = (board.markets || []).map((m) => (m.id === marketId ? { ...m, status } : m));
   const batch = writeBatch(db);
   batch.update(marketRef(marketId), { status });
+  batch.set(boardRef(), { markets }, { merge: true });
+  await batch.commit();
+}
+
+// 블라인드 토글 (마감까지 배율/베팅 수 숨김). board 미러 동기화.
+export async function setMarketBlind(marketId, blind) {
+  const { db } = getFirebase();
+  const board = (await getDoc(boardRef())).data() || { markets: [] };
+  const markets = (board.markets || []).map((m) => (m.id === marketId ? { ...m, blind } : m));
+  const batch = writeBatch(db);
+  batch.update(marketRef(marketId), { blind });
   batch.set(boardRef(), { markets }, { merge: true });
   await batch.commit();
 }
@@ -226,6 +239,43 @@ export async function createUser({ userId, name, pinHash, balance = 0 }) {
 export async function getUser(userId) {
   const snap = await getDoc(userRef(userId));
   return snap.exists() ? { id: snap.id, ...snap.data() } : null;
+}
+
+// 표시 이름으로 계정 조회(이름이 로그인/지급/전송의 키). 이름 변경 후에도 동작.
+export async function getUserByName(name) {
+  const { db } = getFirebase();
+  const q = query(collection(db, 'users'), where('name', '==', String(name).trim()));
+  const snap = await getDocs(q);
+  if (snap.empty) return null;
+  const d = snap.docs[0];
+  return { id: d.id, ...d.data() };
+}
+
+// 운영자: 계정 정보 수정(이름/PIN). 문서 id 는 유지(베팅 기록 보존).
+export async function updateUserProfile(userId, patch) {
+  const clean = {};
+  if (patch.name != null && String(patch.name).trim()) clean.name = String(patch.name).trim();
+  if (patch.pinHash != null) clean.pinHash = patch.pinHash;
+  if (Object.keys(clean).length === 0) return;
+  await updateDoc(userRef(userId), clean);
+}
+
+// 운영자 중개 포인트 전송 (A → B). 원자 트랜잭션.
+export async function transferPoints(fromUserId, toUserId, amount) {
+  amount = Math.floor(Number(amount));
+  if (!Number.isInteger(amount) || amount <= 0) throw new Error('보낼 금액은 1 이상 정수여야 합니다.');
+  if (fromUserId === toUserId) throw new Error('보내는/받는 계정이 같습니다.');
+  const { db } = getFirebase();
+  await runTransaction(db, async (tx) => {
+    const fRef = userRef(fromUserId), tRef = userRef(toUserId);
+    const [fSnap, tSnap] = await Promise.all([tx.get(fRef), tx.get(tRef)]);
+    if (!fSnap.exists()) throw new Error('보내는 계정을 찾을 수 없습니다.');
+    if (!tSnap.exists()) throw new Error('받는 계정을 찾을 수 없습니다.');
+    const fb = fSnap.data().balance || 0;
+    if (amount > fb) throw new Error('보내는 계정의 잔액이 부족합니다.');
+    tx.update(fRef, { balance: fb - amount });
+    tx.update(tRef, { balance: (tSnap.data().balance || 0) + amount });
+  });
 }
 
 // 운영자 수동 포인트 지급/조정 (delta 가산).

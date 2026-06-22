@@ -1,0 +1,71 @@
+rules_version = '2';
+
+// 체스 베팅판 Firestore 보안 규칙
+//
+// 핵심 무결성 목표: "포인트는 운영자만 만들 수 있다(인플레이션 차단)".
+//   - 참가자(익명 Auth)는 자기 balance 를 '감소'만 시킬 수 있고, 절대 증가 불가.
+//   - balance 증가(=정산 환급, 수동 지급)는 운영자(isAdmin)만.
+//   - 정산의 진실 원천은 markets/{id}/bets 서브컬렉션(개인 베팅 기록)이며,
+//     markets 문서의 pools 합계는 '표시용' 캐시라 조작돼도 실제 돈에 영향 없음.
+//
+// 운영자 식별: 구글 로그인 이메일이 아래 목록에 있으면 운영자.
+//   (더 강하게는 Admin SDK custom claim { admin:true } 사용 → isAdmin() 교체)
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() { return request.auth != null; }
+
+    function isAdmin() {
+      return signedIn()
+        && request.auth.token.email != null
+        && request.auth.token.email in [
+          'jetsomk22@gmail.com'
+          // 'another-admin@gmail.com'
+        ];
+    }
+
+    // 대진표 + 마켓 목록 + 상태 (전원 구독, 운영자만 write)
+    match /meta/{docId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // 베팅 참가자 계정 (이름 + PIN, balance 보유)
+    match /users/{userId} {
+      allow read: if true;                  // 명단/리더보드 공개
+      allow create, delete: if isAdmin();   // 계정/포인트는 운영진 발급
+      // 운영자는 자유롭게(정산/지급). 참가자는 balance 만, 감소만, 음수 불가.
+      allow update: if isAdmin()
+        || (signedIn()
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['balance'])
+            && request.resource.data.balance is int
+            && request.resource.data.balance >= 0
+            && request.resource.data.balance < resource.data.balance);
+    }
+
+    // 마켓: 운영자가 생성/상태/결과 관리. 참가자는 '열린' 마켓의 pools(표시용)만 갱신.
+    match /markets/{marketId} {
+      allow read: if true;
+      allow create, delete: if isAdmin();
+      allow update: if isAdmin()
+        || (signedIn()
+            && resource.data.status == 'open'
+            && request.resource.data.status == 'open'
+            && request.resource.data.result == resource.data.result);
+
+      // 개인 베팅 기록 = 정산의 진실 원천
+      match /bets/{betUserId} {
+        allow read: if true;
+        // 베팅 생성: 양수 stake, 동시에 본인 balance 가 '정확히 stake 만큼' 감소해야 함.
+        allow create: if signedIn()
+          && request.resource.data.stake is int
+          && request.resource.data.stake > 0
+          && get(/databases/$(database)/documents/markets/$(marketId)).data.status == 'open'
+          && getAfter(/databases/$(database)/documents/users/$(betUserId)).data.balance
+             == get(/databases/$(database)/documents/users/$(betUserId)).data.balance - request.resource.data.stake;
+        // 베팅 수정/취소는 운영자만 (정산 정정 등)
+        allow update, delete: if isAdmin();
+      }
+    }
+  }
+}

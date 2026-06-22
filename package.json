@@ -1,0 +1,25 @@
+{
+  "name": "hk-betting",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "체스 16강 토너먼트 가상 포인트 베팅판 (패리뮤추얼) — GitHub Pages + Firebase",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "build:ghpages": "cross-env DEPLOY_TARGET=ghpages vite build",
+    "preview": "vite preview",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "firebase": "^10.14.1",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.3.2",
+    "vite": "^5.4.8",
+    "vitest": "^2.1.2"
+  }
+}

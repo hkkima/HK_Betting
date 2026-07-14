@@ -57,8 +57,8 @@ function DangerZone({ flash }) {
     flash(`전체 초기화 완료 (마켓 ${m} · 참가자 ${u} 삭제)`);
   }
   return (
-    <div className="card" style={{ borderColor: 'var(--lose)' }}>
-      <h3 style={{ color: 'var(--lose)' }}>⚠️ 위험 구역 — 데이터 초기화</h3>
+    <div className="card" style={{ borderColor: 'var(--loss)' }}>
+      <h3 style={{ color: 'var(--loss)' }}>⚠️ 위험 구역 — 데이터 초기화</h3>
       <div className="row">
         <button className="ghost" onClick={wipeMatches}>대진·베팅만 초기화</button>
         <button className="ghost" onClick={wipeAll}>전체 초기화 (참가자 포함)</button>
@@ -229,7 +229,7 @@ function BulkBracket({ flash }) {
         rows={8}
         value={text}
         onChange={(e) => onText(e.target.value)}
-        style={{ width: '100%', marginTop: 8, background: 'var(--panel2)', color: 'var(--ink)', border: '1px solid var(--line)', borderRadius: 8, padding: 10, fontSize: 14, fontFamily: 'inherit' }}
+        style={{ width: '100%', marginTop: 8, background: 'var(--surface-sunken)', color: 'var(--ink-primary)', border: '1px solid var(--line)', borderRadius: 8, padding: 10, fontSize: 14, fontFamily: 'inherit' }}
         placeholder={'navi vs cat\nfoo vs bar\n...'}
       />
       <div className="row" style={{ marginTop: 8 }}>
@@ -276,7 +276,7 @@ function CreateMarket({ flash }) {
         value={players}
         onChange={(e) => setPlayers(e.target.value)}
         placeholder={'선수/선택지를 줄바꿈 또는 쉼표로 구분\n예) 김규장, 김채연  (1:1)\n또는 4명 이상 = 다자 대전'}
-        style={{ width: '100%', marginTop: 8, background: 'var(--panel2)', color: 'var(--ink)', border: '1px solid var(--line)', borderRadius: 8, padding: 10, fontSize: 14, fontFamily: 'inherit' }}
+        style={{ width: '100%', marginTop: 8, background: 'var(--surface-sunken)', color: 'var(--ink-primary)', border: '1px solid var(--line)', borderRadius: 8, padding: 10, fontSize: 14, fontFamily: 'inherit' }}
       />
       <div className="row" style={{ marginTop: 8 }}>
         <button className="primary" onClick={go}>추가 ({preview.length}지선다)</button>

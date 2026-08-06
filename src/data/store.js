@@ -278,22 +278,6 @@ export async function transferPoints(fromUserId, toUserId, amount) {
   });
 }
 
-// 운영자 수동 포인트 지급/조정 (delta 가산).
-export async function grantPoints(userId, delta) {
-  await updateDoc(userRef(userId), { balance: increment(Math.floor(delta)) });
-}
-
-// 전원에게 delta 포인트 일괄 가산. (운영자만, 시작 포인트 지급용)
-export async function grantAllPoints(delta) {
-  const { db } = getFirebase();
-  const d = Math.floor(delta);
-  const us = await getDocs(collection(db, 'users'));
-  let batch = writeBatch(db);
-  let n = 0;
-  for (const u of us.docs) {
-    batch.update(u.ref, { balance: increment(d) });
-    if (++n % 400 === 0) { await batch.commit(); batch = writeBatch(db); }
-  }
-  await batch.commit();
-  return us.size;
-}
+// 운영자 포인트 지급/조정은 Hub 로 이관 — 서버 권위 grantPoints 콜러블
+// (원장 admin_grant + housePool 상계)만 쓴다. 클라 직접쓰기 경로는 제거.
+// HK_Hub/docs/PLAN-GRANT-CONSOLIDATION.md 3단계.

@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react';
 import { useApp } from '../state/AppContext.jsx';
 import {
-  ensureBoard, createUser, grantPoints, upsertMarket, addMarketsBulk,
+  ensureBoard, createUser, upsertMarket, addMarketsBulk,
   setMarketStatus, setRoundStatus, resolveMarket, refreshBoardMirror, setMarketBlind,
-  wipeMarketsAndBets, wipeUsers, grantAllPoints, subscribeUsers,
+  wipeMarketsAndBets, wipeUsers, subscribeUsers,
   getUserByName, updateUserProfile, transferPoints,
 } from '../data/store.js';
 import { nameToUserId, hashPin } from '../auth/auth.js';
@@ -91,39 +91,16 @@ function CreateUser({ flash }) {
   );
 }
 
-function GrantPoints({ flash }) {
-  const [name, setName] = useState('');
-  const [delta, setDelta] = useState(100);
-  const [allDelta, setAllDelta] = useState(1000);
-  async function go() {
-    try {
-      const u = await getUserByName(name);
-      if (!u) return flash(`'${name}' 계정을 찾을 수 없습니다.`);
-      await grantPoints(u.id, Number(delta));
-      flash(`'${u.name}' 에 ${delta}P 지급/조정`);
-    } catch (e) { flash('실패: ' + e.message); }
-  }
-  async function goAll() {
-    if (!window.confirm(`등록된 전원에게 ${allDelta}P 를 지급합니다. 계속할까요?`)) return;
-    try {
-      const n = await grantAllPoints(Number(allDelta));
-      flash(`전원 지급 완료 — ${n}명에게 각 ${allDelta}P`);
-    } catch (e) { flash('실패: ' + e.message); }
-  }
+// 포인트 지급/조정은 Hub 관리자 화면으로 이관 — 클라 직접쓰기(원장 無)가 아니라
+// 서버 권위 grantPoints(원장 admin_grant + housePool 상계)를 쓴다. HK_Hub/docs/PLAN-GRANT-CONSOLIDATION.md.
+function GrantPoints() {
   return (
     <div className="card">
-      <h3>포인트 지급/조정</h3>
-      <div className="row">
-        <input placeholder="이름" value={name} onChange={(e) => setName(e.target.value)} />
-        <input type="number" value={delta} onChange={(e) => setDelta(e.target.value)} style={{ width: 120 }} />
-        <button className="primary" onClick={go}>개인 지급</button>
-      </div>
-      <div className="row" style={{ marginTop: 8 }}>
-        <span className="muted" style={{ width: 110 }}>전원에게 +</span>
-        <input type="number" value={allDelta} onChange={(e) => setAllDelta(e.target.value)} style={{ width: 120 }} />
-        <button className="primary" onClick={goAll}>전원 지급</button>
-      </div>
-      <p className="muted">전원 지급은 현재 잔액에 가산됩니다(시작 포인트 일괄 지급용).</p>
+      <h3>포인트 지급/조정 → Hub로 이관됨</h3>
+      <p className="muted">
+        개인/전원 P 지급은 <a href="https://hkkima.github.io/HK_Hub/" target="_blank" rel="noreferrer">Hub 관리자 화면</a>에서
+        하세요. 원장 기록과 하우스풀 상계가 붙은 서버 경로로만 지급됩니다.
+      </p>
     </div>
   );
 }

@@ -1,5 +1,10 @@
 # ♟️ 체스 베팅판 (HK_Betting)
 
+> ★크로스-리포 기준·규칙·배포 절차의 정본 = **HK_Hub `docs/GOVERNANCE.md` · `docs/CONVENTIONS.md`**★
+> 이 리포 문서와 충돌하면 Hub 문서가 이긴다. Firestore 규칙 배포는 반드시 Hub 3단계 절차
+> (`HK_Hub/tools/rules/`: check-live → merge → deploy)로만 — ★리포 사본 직배포 금지★(8-04 사고 원인).
+> 운영자 P 지급/조정은 이 앱이 아니라 **Hub 관리자 화면**에서 한다.
+
 체스 16강 토너먼트 대진을 보고 **가상 포인트**를 거는 베팅판. 24명 규모, 수업용.
 **패리뮤추얼**(역/정배 풀 분배) 정산. GitHub Pages(프론트) + Firebase/Firestore(백), **무료 Spark 플랜** 내 동작.
 
@@ -28,8 +33,9 @@ npm run build    # 정적 빌드
 1. [Firebase 콘솔](https://console.firebase.google.com)에서 프로젝트+웹앱 → `firebaseConfig` 6개 값
 2. **Firestore Database** 생성 + **Authentication → 익명, Google** 둘 다 켜기
 3. `.env.example` → `.env` 복사 후 값 채우기
-4. `firestore.rules`의 `isAdmin()` 이메일 화이트리스트에 본인 구글 계정 넣고 배포
-   (`firebase deploy --only firestore:rules` 또는 콘솔에 붙여넣기)
+4. `firestore.rules`의 `isAdmin()` 이메일 화이트리스트에 본인 구글 계정 반영
+   ★배포는 절대 이 리포 사본으로 직접 하지 마라★ — 공유 프로젝트라 다른 앱 규칙이 지워진다.
+   반드시 HK_Hub 3단계 절차(`HK_Hub/tools/rules/` check-live → merge → deploy)로.
 5. `npm run dev`
 
 ## 배포 (GitHub Pages)
